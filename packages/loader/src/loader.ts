@@ -10,16 +10,13 @@ import {
   SourceTag,
   SrcElement,
   TargetElement,
-  // DEV
-  // TargetTag,
   WorkerMessage,
 } from '@/types'
 import {
   blankImg,
   closestDescendant,
-  // detectSupports,
   // DEV
-  // isTag,
+  // detectSupports,
   MapId,
   resolveUrl,
 } from '@/utils'
@@ -29,6 +26,7 @@ import { worker } from '@/worker'
 class Loader {
   private _worker = worker
   private _options: Options = {} as Options
+  // DEV
   // private _supports = detectSupports()
   private _blobUrlByOrigin: Map<string, string> = new Map()
   private _rootsMap: MapId<HTMLElement, RootData> = new MapId()
@@ -54,16 +52,26 @@ class Loader {
 
     if (target === null) {
       console.error('[@snoozy] No target found')
+      root.classList.remove('lazyloading')
 
       return null
     }
 
     const sources = this._getSources(target)
+
+    if (
+      [target, ...sources].every(el => !el.dataset.src && !el.dataset.srcset)
+    ) {
+      console.error('[@snoozy] No data found')
+      root.classList.remove('lazyloading')
+
+      return null
+    }
+
     const refs: Ref[] = []
     const id = this._rootsMap.add(root, { root, target, sources, refs })
 
     console.info('ADD', id, `[${target.dataset.test}]`)
-    console.info(sources)
 
     if (root.dataset?.lazyMode !== 'visible') {
       this.load(root)
@@ -130,15 +138,26 @@ class Loader {
    * Replace data with blob URLs
    */
   public switch(root: HTMLElement) {
-    console.info('SWITCH', this._sourcesMap, root)
-
     const { data } = this._getRootData(root)
-    const { refs, sources, target } = data
-    const parent = target.parentNode || target
-    const img = parent.querySelector('img') as HTMLImageElement
+    const { sources, target } = data
+    const img = closestDescendant(target, 'img') as HTMLImageElement
 
-    img.onload = () => {
-      console.info('LOADED', refs)
+    img.onload = async () => {
+      // CSS classes
+      root.classList.remove('lazyloading')
+
+      // Transition
+      this._options.loaded && (await this._options.loaded(root))
+
+      // CSS classes
+      root.classList.add('lazyloaded')
+
+      // After transition
+      this._options.afterload && this._options.afterload(root)
+
+      // Cleaning
+      // If revoked, can not be reused…
+      // URL.revokeObjectURL(url)
     }
 
     sources.forEach(el => {
@@ -149,7 +168,6 @@ class Loader {
         const { attr, origin } = source
         const blob = this._blobUrlByOrigin.get(origin) as string
 
-        console.info('ID', id, source)
         if (attr === 'src') {
           el.src = blob
         } else if (attr === 'srcset') {
@@ -166,62 +184,6 @@ class Loader {
         }
       }
     })
-
-    // TODO: not the first index…
-    // Scénarii for multiple refs ?
-    // let [{ id, data: sources }] = refs
-    // const isPicture = data.target.tagName === 'PICTURE'
-    // const hasChildren = refs.length > 1
-
-    // if (hasChildren) {
-    //   if (isPicture && this._supports.picture && this._supports.srcset) {
-    //     ;({ id, data: sources } = refs.find(r => r.tag === 'source') as Ref)
-    //   } else {
-    //     ;({ id, data: sources } = refs.find(r => r.tag !== 'source') as Ref)
-    //   }
-    // }
-    // const el = this._sourcesMap.getKeyById(id)
-    // const img = isPicture
-    //   ? (target.querySelector('img') as HTMLImageElement)
-    //   : (el as HTMLImageElement)
-
-    // console.info('SWITCH:REFS', el, sources, img)
-
-    // #TODO: reduce in a smart way
-    // const src = sources.find(s => s.attr === 'src')
-    // const srcset = sources.find(s => s.attr === 'srcset')
-
-    // img.onload = async () => {
-    //   // CSS classes
-    //   root.classList.remove('lazyloading')
-
-    //   // Transition
-    //   this._options.loaded && (await this._options.loaded(root))
-
-    //   // CSS classes
-    //   root.classList.add('lazyloaded')
-
-    //   // After transition
-    //   this._options.afterload && this._options.afterload(root)
-
-    //   // Cleaning
-    //   // If revoked, can not be reused…
-    //   // URL.revokeObjectURL(url)
-    //   el.removeAttribute('data-src')
-    //   el.removeAttribute('data-srcset')
-    // }
-
-    // Update the right attribute (src? srcset?)
-    // TODO: refactoring?
-    // Mieux vaut attendre d'avoir implémenté picture…
-    // if (this._supports.srcset && srcset && this._hasUrl(srcset)) {
-    //   el.srcset = el.dataset.srcset?.replace(
-    //     srcset.origin,
-    //     this._blobUrlByOrigin.get(srcset.origin) as string
-    //   ) as string
-    // } else if (src && this._hasUrl(src)) {
-    //   el.src = this._blobUrlByOrigin.get(src.origin) as string
-    // }
   }
 
   /**
@@ -255,17 +217,6 @@ class Loader {
    * We can have multiple sources (picture > img + source)
    */
   private _getSources(target: TargetElement) {
-    // const elements: SourceElement[] =
-    //   target.children.length > 0
-    //     ? ([...target.querySelectorAll(sourceSelector)] as SourceElement[])
-    //     : [target as SourceElement]
-
-    // if (elements.every(e => e.matches('[data-src],[data-srcset]'))) {
-    //   return elements
-    // }
-
-    // return null
-
     return [target, ...target.children].filter(e =>
       e.matches(sourceSelector)
     ) as SourceElement[]
@@ -323,8 +274,7 @@ class Loader {
 
       const contents: CloneData[] = []
       const clonedSources = this._getSources(clone)
-      const parent = clone.parentNode || clone
-      const img = parent.querySelector('img') as HTMLImageElement
+      const img = closestDescendant(clone, 'img') as HTMLImageElement
 
       img.onload = () => {
         const srcTmp = img.currentSrc
@@ -333,7 +283,6 @@ class Loader {
         const id = this._sourcesMap.add(el, data)
         const tag = el.tagName.toLowerCase() as SourceTag
 
-        console.info('RENDERED', clone, data.origin, id)
         clone.remove()
 
         resolve({
@@ -362,6 +311,7 @@ class Loader {
           index += 1
         }
 
+        // TODO: add check supports…
         if (el.dataset.srcset) {
           clonedSources[i].srcset = el.dataset.srcset
             .split(',')
@@ -388,44 +338,11 @@ class Loader {
     })
   }
 
-  /**
-   * Get sources data from the source element
-   * Sources are data values form data attribute(s) to be lazyloaded
-   * We can have multiple sources (img[data-src][data-srcset])
-   * Target is needed for the "rendering" step
-   */
-  // private async _getSourcesData(el: SourceElement, target: TargetElement) {
-  //   const sources: SourceData[] = []
-
-  //   if (el.dataset.src) {
-  //     const origin = this._getSrc(el)
-
-  //     sources.push({ attr: 'src', origin, resolved: resolveUrl(origin) })
-  //   }
-
-  //   if (el.dataset.srcset) {
-  //     const origin = await this._getSrcset(el, target)
-
-  //     sources.push({ attr: 'srcset', origin, resolved: resolveUrl(origin) })
-  //   }
-
-  //   return sources
-  // }
-
   private _swapSrc(el: SrcElement) {
     if (el.hasAttribute('data-src')) {
       el.src = el.getAttribute('data-src') as string
     }
   }
-
-  // TODO: needed???
-  // private _hasAttr(el: HTMLElement, attr: string) {
-  //   return el.hasAttribute(`data-${attr}`)
-  // }
-
-  // private _getAttr(el: HTMLElement, attr: string) {
-  //   return el.getAttribute(`data-${attr}`)
-  // }
 
   /**
    * Get src value
@@ -433,79 +350,6 @@ class Loader {
   private _getSrc(el: SourceElement | SrcElement): string {
     return el.getAttribute('data-src') as string
   }
-
-  /**
-   * Get srcset value
-   * This invokes a "pre-rendering" to get
-   * accurate element (e.g. `<picture>` with `media`) and
-   * correct URL from `srcset` (e.g. based on viewport or `sizes`)
-   */
-  // private _getSrcset(
-  //   el: SourceElement,
-  //   target: TargetElement
-  // ): Promise<string> {
-  //   const isImg = el.tagName === 'IMG'
-
-  //   return new Promise(resolve => {
-  //     const { srcset } = el.dataset
-  //     const w = isImg ? (el as HTMLImageElement).width : target.offsetWidth
-  //     const h = isImg ? (el as HTMLImageElement).height : target.offsetHeight
-  //     const sources: string[] = []
-
-  //     const testSrc = blankImg
-  //     const testSet = srcset
-  //       ?.split(',')
-  //       .map((set, i) => {
-  //         const [src, w] = set.replace(/^ /, '').split(' ')
-
-  //         sources.push(src)
-
-  //         return `${testSrc}#${i} ${w}`
-  //       })
-  //       .join(',') as string
-
-  //     const testEl = target.cloneNode(true) as TargetElement
-
-  //     testEl.style.position = 'fixed'
-  //     testEl.style.left = '200vw'
-  //     testEl.style.top = '200vh'
-  //     testEl.style.visibility = 'hidden'
-  //     testEl.style.width = `${w}px`
-  //     testEl.style.height = `${h}px`
-
-  //     if (isImg) {
-  //       ;(testEl as HTMLImageElement).src = testSrc
-  //       ;(testEl as HTMLImageElement).srcset = testSet
-  //     } else {
-  //       const img = testEl.querySelector('img')
-
-  //       if (img) {
-  //         img.src = testSrc
-  //       }
-
-  //       const source = testEl.querySelector('source')
-
-  //       if (source) {
-  //         source.srcset = testSet
-  //       }
-  //     }
-
-  //     document.body.appendChild(testEl)
-
-  //     const img = isImg
-  //       ? (testEl as HTMLImageElement)
-  //       : (testEl.querySelector('img') as HTMLImageElement)
-
-  //     img.onload = () => {
-  //       const srcTmp = img.currentSrc
-  //       const i = parseInt(srcTmp.split('#')[1], 10) || 0
-
-  //       console.info('LOADED', sources[i])
-  //       testEl.remove()
-  //       resolve(sources[i])
-  //     }
-  //   })
-  // }
 
   /**
    * Get data (id, value) associated to a root element
@@ -517,15 +361,6 @@ class Loader {
 
     return { id, data }
   }
-
-  // DEV
-  // private _needsRendering(sources: SourceElement[]) {
-  //   // return (
-  //   //   data.target.matches('[data-srcset]') ||
-  //   //   data.sources.some(el => el.matches('[data-srcset]'))
-  //   // )
-  //   return sources.some(el => el.matches('[data-srcset]'))
-  // }
 
   /**
    * Are all blob URLs loaded?
