@@ -1,0 +1,40 @@
+{
+  "name": "@snoozy/loader",
+  "version": "0.0.0",
+  "description": "TBD",
+  "keywords": [],
+  "publishConfig": {
+    "access": "public"
+  },
+  "source": "src/index.ts",
+  "files": [
+    "dist"
+  ],
+  "types": "dist/index.d.ts",
+  "main": "dist/snoozy.umd.js",
+  "module": "dist/snoozy.modern.js",
+  "mangle": {
+    "regex": "^_"
+  },
+  "homepage": "https://github.com/thierrymichel/snoozy#readme",
+  "bugs": {
+    "url": "https://github.com/thierrymichel/snoozy/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/thierrymichel/snoozy.git"
+  },
+  "scripts": {
+    "build": "microbundle -f modern --name snoozy",
+    "build1": "microbundle --name snoozy",
+    "build2": "tsc -p tsconfig.test.json",
+    "build3": "microbundle -i dist2/loader.js -o dist3 -f modern --name snoozy",
+    "build:watch": "microbundle watch -f modern --name snoozy",
+    "clear": "rimraf dist",
+    "lint": "eslint src/**",
+    "lint:staged": "lint-staged",
+    "report": "source-map-explorer --html ./dist/snoozy.module.js > report.html",
+    "size": "echo '📦 loader' && gzip-size ./dist/snoozy.module.js"
+  }
+}
