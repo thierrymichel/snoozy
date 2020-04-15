@@ -5,18 +5,21 @@ import {
   Options,
   Ref,
   RootData,
+  SourceAttribute,
   SourceData,
   SourceElement,
   SourceTag,
   SrcElement,
   TargetElement,
   WorkerMessage,
+  TargetTag,
 } from '@/types'
 import {
   blankImg,
   closestDescendant,
   // DEV
   // detectSupports,
+  isTag,
   MapId,
   resolveUrl,
 } from '@/utils'
@@ -33,6 +36,7 @@ class Loader {
   private _sourcesMap: MapId<SourceElement, SourceData> = new MapId()
 
   constructor() {
+    // Context bonding
     this._onMessage = this._onMessage.bind(this)
   }
 
@@ -48,8 +52,9 @@ class Loader {
    * Add an element
    */
   public add(root: HTMLElement) {
-    const target = this._getTarget(root)
+    const target = closestDescendant(root, targetSelector)
 
+    // Target check
     if (target === null) {
       console.error('[@snoozy] No target found')
       root.classList.remove('lazyloading')
@@ -59,6 +64,7 @@ class Loader {
 
     const sources = this._getSources(target)
 
+    // Data sources check
     if (
       [target, ...sources].every(el => !el.dataset.src && !el.dataset.srcset)
     ) {
@@ -68,11 +74,13 @@ class Loader {
       return null
     }
 
+    // Store root related infos
     const refs: Ref[] = []
     const id = this._rootsMap.add(root, { root, target, sources, refs })
 
     console.info('ADD', id, `[${target.dataset.test}]`)
 
+    // TODO: "autoload" scenarios
     if (root.dataset?.lazyMode !== 'visible') {
       this.load(root)
     }
@@ -95,19 +103,20 @@ class Loader {
 
     root.classList.remove('lazyload')
 
-    if (data.sources.length === 0) {
+    if (this._useSwap(data)) {
       this.swap(root)
 
       return
     }
 
     // Get and set refs
+    // Refs are source elements with data that need to be loaded
     data.refs = await this._getRefs(data)
 
-    // Before load
+    // Before load hook
     this._options.beforeload && this._options.beforeload(root)
 
-    // Loading
+    // Start loading
     root.classList.add('lazyloading')
     this._options.loading && this._options.loading(root)
 
@@ -129,8 +138,8 @@ class Loader {
   public swap(root: HTMLElement) {
     const { data } = this._getRootData(root)
 
-    this._swapSrc(data.target as SrcElement)
-    data.sources.forEach(el => this._swapSrc(el))
+    this._swapAttr(data.target as SrcElement)
+    data.sources.forEach(el => this._swapAttr(el))
   }
 
   /**
@@ -146,13 +155,13 @@ class Loader {
       // CSS classes
       root.classList.remove('lazyloading')
 
-      // Transition
+      // Loaded hook transition
       this._options.loaded && (await this._options.loaded(root))
 
       // CSS classes
       root.classList.add('lazyloaded')
 
-      // After transition
+      // After hook
       this._options.afterload && this._options.afterload(root)
 
       // Cleaning
@@ -164,6 +173,7 @@ class Loader {
       const id = this._sourcesMap.getIdByKey(el)
 
       if (id) {
+        // We have a blob URL for replacement
         const source = this._sourcesMap.getValueById(id) as SourceData
         const { attr, origin } = source
         const blob = this._blobUrlByOrigin.get(origin) as string
@@ -174,14 +184,9 @@ class Loader {
           el.srcset = el.dataset.srcset?.replace(origin, blob) as string
         }
       } else {
-        if (el.dataset.src) {
-          el.src = el.dataset.src
-          el.removeAttribute('data-src')
-        }
-        if (el.dataset.srcset) {
-          el.srcset = el.dataset.srcset
-          el.removeAttribute('data-srcset')
-        }
+        // Nothing loaded, simply update attributes
+        this._swapAttr(el, 'src')
+        this._swapAttr(el, 'srcset')
       }
     })
   }
@@ -192,22 +197,15 @@ class Loader {
    */
   private _onMessage(event: MessageEvent) {
     const { id, ref: newRef } = event.data as WorkerMessage
-    const data = this._rootsMap.getValueById(id) as RootData
-    const { refs } = data
 
+    // Add new blob URL for origin
     const { blob, origin } = newRef.data
     const url = URL.createObjectURL(blob)
-
     this._blobUrlByOrigin.set(origin, url)
-    this._hasLoaded(refs) && this.switch(data.root)
-  }
 
-  /**
-   * Get the target element to be lazy loaded
-   * This allows to use some wrapper
-   */
-  private _getTarget(root: HTMLElement) {
-    return closestDescendant(root, targetSelector)
+    // If all refs are loaded, switch
+    const data = this._rootsMap.getValueById(id) as RootData
+    this._hasLoaded(data.refs) && this.switch(data.root)
   }
 
   /**
@@ -222,6 +220,17 @@ class Loader {
     ) as SourceElement[]
   }
 
+  private _setRef(el: SourceElement, data: SourceData) {
+    const id = this._sourcesMap.add(el, data)
+    const tag = el.tagName.toLowerCase() as SourceTag
+
+    return {
+      id,
+      tag,
+      data,
+    }
+  }
+
   /**
    * Get refs from the target and sources elements
    * Refs connect a source element with its data
@@ -229,9 +238,8 @@ class Loader {
    */
   private async _getRefs(data: RootData) {
     const { sources } = data
-    const render = sources.some(el => el.matches('[data-srcset]'))
 
-    if (render) {
+    if (this._useRender(data)) {
       // Render target to know exactly which source to reference
       const ref = await this._getFromRender(data)
 
@@ -240,21 +248,14 @@ class Loader {
 
     // Get, replace and reference all sources with src attribute
     return sources.map(el => {
-      const origin = this._getSrc(el)
+      const origin = el.dataset.src as string
       const data: SourceData = {
         attr: 'src',
         origin,
         resolved: resolveUrl(origin),
       }
 
-      const id = this._sourcesMap.add(el, data)
-      const tag = el.tagName.toLowerCase() as SourceTag
-
-      return {
-        id,
-        tag,
-        data,
-      }
+      return this._setRef(el, data)
     })
   }
 
@@ -280,16 +281,9 @@ class Loader {
         const srcTmp = img.currentSrc
         const index = parseInt(srcTmp.split('#')[1], 10) || 0
         const { el, data } = contents[index]
-        const id = this._sourcesMap.add(el, data)
-        const tag = el.tagName.toLowerCase() as SourceTag
 
         clone.remove()
-
-        resolve({
-          id,
-          tag,
-          data,
-        })
+        resolve(this._setRef(el, data))
       }
 
       let index = 0
@@ -312,6 +306,7 @@ class Loader {
         }
 
         // TODO: add check supports…
+        // If srcset or wathever is not supported…
         if (el.dataset.srcset) {
           clonedSources[i].srcset = el.dataset.srcset
             .split(',')
@@ -338,17 +333,11 @@ class Loader {
     })
   }
 
-  private _swapSrc(el: SrcElement) {
-    if (el.hasAttribute('data-src')) {
-      el.src = el.getAttribute('data-src') as string
+  private _swapAttr(el: SrcElement, attr: SourceAttribute = 'src') {
+    if (el.dataset[attr]) {
+      el.setAttribute(attr, el.dataset[attr] as string)
+      el.removeAttribute(`data-${attr}`)
     }
-  }
-
-  /**
-   * Get src value
-   */
-  private _getSrc(el: SourceElement | SrcElement): string {
-    return el.getAttribute('data-src') as string
   }
 
   /**
@@ -370,11 +359,19 @@ class Loader {
   }
 
   /**
-   * Does this origin have a blob URL?
+   * Check if rendering is needed
+   * to get accurate source (media, srcset, sizes, …)
    */
-  // private _hasUrl(source: SourceData | undefined) {
-  //   return source && this._blobUrlByOrigin.has(source.origin)
-  // }
+  private _useRender(data: RootData) {
+    return data.sources.some(el => el.matches('[data-srcset]'))
+  }
+
+  /**
+   * Check if element needs to be swap (vs switch)
+   */
+  private _useSwap(data: RootData) {
+    return isTag(data.target.tagName.toLowerCase() as TargetTag, 'swappable')
+  }
 }
 
 export default new Loader()

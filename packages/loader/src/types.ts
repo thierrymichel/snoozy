@@ -8,11 +8,14 @@ export interface GenericObject {
 export interface SpecificObject<T> {
   [key: string]: T
 }
-export interface Options {
+export interface Hooks {
   beforeload?: Function
   loading?: Function
   loaded?: Function
   afterload?: Function
+}
+export interface Options extends Hooks {
+  prefix?: string
 }
 export interface Supports {
   srcset: boolean
@@ -23,9 +26,6 @@ export interface Supports {
 export interface Tag {
   name: TargetTag | SourceTag
   swappable: boolean
-  fetch: boolean
-  children: boolean
-  srcset: boolean
 }
 
 // Root

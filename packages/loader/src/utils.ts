@@ -5,19 +5,6 @@ export function isTag(name: Tag['name'], prop: keyof Tag) {
   return tags.find(t => t.name === name.toLowerCase() && t[prop])
 }
 
-// Update -> prefer `isTag`
-// export function needsFetch(name: Tag['name']) {
-//   return tags.find(t => t.name === name.toLowerCase() && t.fetch)
-// }
-
-// export function hasChildren(name: Tag['name']) {
-//   return tags.find(t => t.name === name.toLowerCase() && t.children)
-// }
-
-// export function hasSrcset(name: Tag['name']) {
-//   return tags.find(t => t.name.toLowerCase() === name && t.srcset)
-// }
-
 // https://stackoverflow.com/a/52609903/2372418
 export function closestDescendant(root: HTMLElement, selector: string) {
   const elements = [root as Element]
