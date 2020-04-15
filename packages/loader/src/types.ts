@@ -19,8 +19,9 @@ export interface Options extends Hooks {
 }
 export interface Supports {
   srcset: boolean
-  sizes: boolean
-  picture: boolean
+  // Usage ?
+  // sizes: boolean
+  // picture: boolean
 }
 // TODO: to be cleaned…
 export interface Tag {
@@ -34,6 +35,7 @@ export interface RootData {
   target: TargetElement
   sources: SourceElement[]
   refs: Ref[]
+  hooks: Hooks
 }
 
 // Src

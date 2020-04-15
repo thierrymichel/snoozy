@@ -2,6 +2,7 @@
 import { sourceSelector, targetSelector } from '@/constants'
 import {
   CloneData,
+  Hooks,
   Options,
   Ref,
   RootData,
@@ -17,8 +18,7 @@ import {
 import {
   blankImg,
   closestDescendant,
-  // DEV
-  // detectSupports,
+  detectSupports,
   isTag,
   MapId,
   resolveUrl,
@@ -29,8 +29,7 @@ import { worker } from '@/worker'
 class Loader {
   private _worker = worker
   private _options: Options = {} as Options
-  // DEV
-  // private _supports = detectSupports()
+  private _supports = detectSupports()
   private _blobUrlByOrigin: Map<string, string> = new Map()
   private _rootsMap: MapId<HTMLElement, RootData> = new MapId()
   private _sourcesMap: MapId<SourceElement, SourceData> = new MapId()
@@ -51,7 +50,7 @@ class Loader {
   /**
    * Add an element
    */
-  public add(root: HTMLElement) {
+  public add(root: HTMLElement, hooks: Hooks = {} as Hooks) {
     const target = closestDescendant(root, targetSelector)
 
     // Target check
@@ -76,7 +75,7 @@ class Loader {
 
     // Store root related infos
     const refs: Ref[] = []
-    const id = this._rootsMap.add(root, { root, target, sources, refs })
+    const id = this._rootsMap.add(root, { root, target, sources, refs, hooks })
 
     console.info('ADD', id, `[${target.dataset.test}]`)
 
@@ -114,11 +113,11 @@ class Loader {
     data.refs = await this._getRefs(data)
 
     // Before load hook
-    this._options.beforeload && this._options.beforeload(root)
+    this._doHook('beforeload', data)
 
     // Start loading
     root.classList.add('lazyloading')
-    this._options.loading && this._options.loading(root)
+    this._doHook('loading', data)
 
     if (this._hasLoaded(data.refs)) {
       // All sources are loaded…
@@ -156,13 +155,13 @@ class Loader {
       root.classList.remove('lazyloading')
 
       // Loaded hook transition
-      this._options.loaded && (await this._options.loaded(root))
+      await this._doHook('loaded', data)
 
       // CSS classes
       root.classList.add('lazyloaded')
 
       // After hook
-      this._options.afterload && this._options.afterload(root)
+      this._doHook('afterload', data)
 
       // Cleaning
       // If revoked, can not be reused…
@@ -259,6 +258,9 @@ class Loader {
     })
   }
 
+  /**
+   * Get ref from render
+   */
   private _getFromRender(data: RootData): Promise<Ref> {
     return new Promise(resolve => {
       const { target, sources } = data
@@ -289,7 +291,7 @@ class Loader {
       let index = 0
 
       sources.forEach((el, i) => {
-        if (el.dataset.src) {
+        if (el.dataset.src && !this._supports.srcset) {
           const origin = el.dataset.src
 
           contents.push({
@@ -305,9 +307,7 @@ class Loader {
           index += 1
         }
 
-        // TODO: add check supports…
-        // If srcset or wathever is not supported…
-        if (el.dataset.srcset) {
+        if (el.dataset.srcset && this._supports.srcset) {
           clonedSources[i].srcset = el.dataset.srcset
             .split(',')
             .map(set => {
@@ -333,6 +333,9 @@ class Loader {
     })
   }
 
+  /**
+   * Swap atrribute with data-attribute + clean data
+   */
   private _swapAttr(el: SrcElement, attr: SourceAttribute = 'src') {
     if (el.dataset[attr]) {
       el.setAttribute(attr, el.dataset[attr] as string)
@@ -349,6 +352,12 @@ class Loader {
     const data = this._rootsMap.getValueByKey(root) as RootData
 
     return { id, data }
+  }
+
+  private _doHook(name: keyof Hooks, data: RootData) {
+    const hook = data.hooks[name] || this._options[name]
+
+    return hook && hook(data.root)
   }
 
   /**

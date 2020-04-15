@@ -20,23 +20,23 @@ export function closestDescendant(root: HTMLElement, selector: string) {
 export function detectSupports() {
   const supports: Supports = {
     srcset: false,
-    sizes: false,
-    picture: false,
   }
 
   const img = new Image()
 
+  // https://caniuse.com/#search=srcset
   if ('srcset' in img) {
     supports.srcset = true
   }
 
-  if ('sizes' in img) {
-    supports.sizes = true
-  }
+  // Usage?
+  // if ('sizes' in img) {
+  //   supports.sizes = true
+  // }
 
-  if ('HTMLPictureElement' in window) {
-    supports.picture = true
-  }
+  // if ('HTMLPictureElement' in window) {
+  //   supports.picture = true
+  // }
 
   return supports
 }
