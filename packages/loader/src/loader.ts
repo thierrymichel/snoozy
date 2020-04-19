@@ -25,7 +25,6 @@ import {
 } from '@/utils'
 import { worker } from '@/worker'
 
-// TODO: add comments
 class Loader {
   private _worker = worker
   private _options: Options = {} as Options
